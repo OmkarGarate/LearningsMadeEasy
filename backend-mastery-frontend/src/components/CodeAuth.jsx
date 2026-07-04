@@ -73,7 +73,7 @@ export default function CodeAuth({ children }) {
         </form>
 
         <p className="text-center text-xs text-slate-500 mt-6">
-          Default code is set in backend's <code className="text-slate-400">.env</code> as <code className="text-slate-400">LOGIN_CODE</code>
+          Default code is set as <code className="text-slate-400">LOGIN_CODE</code>
         </p>
       </div>
     </div>
