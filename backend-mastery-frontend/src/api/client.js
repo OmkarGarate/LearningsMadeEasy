@@ -1,4 +1,4 @@
-// API client with automatic JWT refresh handling
+// API client with automatic JWT refresh
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const ACCESS_KEY = 'bm:access';
@@ -48,16 +48,13 @@ export async function apiFetch(path, options = {}) {
   };
 
   let res = await makeRequest(tokenStore.getAccess());
-
   if (res.status === 401) {
     const data = await res.clone().json().catch(() => ({}));
     if (data.code === 'TOKEN_EXPIRED' && tokenStore.getRefresh()) {
       try {
         if (!isRefreshing) {
           isRefreshing = true;
-          refreshPromise = refreshTokens().finally(() => {
-            isRefreshing = false;
-          });
+          refreshPromise = refreshTokens().finally(() => { isRefreshing = false; });
         }
         const newAccess = await refreshPromise;
         res = await makeRequest(newAccess);
@@ -67,7 +64,6 @@ export async function apiFetch(path, options = {}) {
       }
     }
   }
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     const error = new Error(err.error || 'Request failed');
@@ -79,35 +75,30 @@ export async function apiFetch(path, options = {}) {
 }
 
 export const api = {
-  // Passkey registration
-  registerStart: (username, displayName) =>
-    apiFetch('/auth/register/start', { method: 'POST', body: JSON.stringify({ username, displayName }) }),
-  registerFinish: (username, displayName, credential, challenge) =>
-    apiFetch('/auth/register/finish', { method: 'POST', body: JSON.stringify({ username, displayName, credential, challenge }) }),
-
-  // Passkey login
-  loginStart: (username) =>
-    apiFetch('/auth/login/start', { method: 'POST', body: JSON.stringify({ username }) }),
-  loginFinish: (credential, challenge) =>
-    apiFetch('/auth/login/finish', { method: 'POST', body: JSON.stringify({ credential, challenge }) }),
-
-  // Session
+  // Auth — direct code
+  loginWithCode: (code) => apiFetch('/auth/code', { method: 'POST', body: JSON.stringify({ code }) }),
   logout: (refreshToken) => apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }),
   getMe: () => apiFetch('/auth/me'),
 
-  // Credentials
-  deleteCredential: (id) => apiFetch(`/auth/credentials/${id}`, { method: 'DELETE' }),
+  // AI tutor
+  aiChat: (messages, conceptId) => apiFetch('/ai/chat', {
+    method: 'POST',
+    body: JSON.stringify({ messages, conceptId }),
+  }),
 
   // Progress
   toggleConcept: (conceptId) => apiFetch(`/user/progress/${conceptId}/toggle`, { method: 'POST' }),
 
+  // MCQ answers
+  recordMcqAnswer: ({ conceptId, mcqId, selected, correct }) =>
+    apiFetch('/user/mcq/answer', { method: 'POST', body: JSON.stringify({ conceptId, mcqId, selected, correct }) }),
+
+  // Problem solved
+  markProblemSolved: (conceptId, problemTitle) =>
+    apiFetch('/user/problem/solved', { method: 'POST', body: JSON.stringify({ conceptId, problemTitle }) }),
+
   // Notes
   setNote: (conceptId, text) => apiFetch(`/user/notes/${conceptId}`, { method: 'PUT', body: JSON.stringify({ text }) }),
-
-  // Reminders
-  addReminder: (text, datetime) => apiFetch('/user/reminders', { method: 'POST', body: JSON.stringify({ text, datetime }) }),
-  toggleReminder: (id) => apiFetch(`/user/reminders/${id}/toggle`, { method: 'PATCH' }),
-  deleteReminder: (id) => apiFetch(`/user/reminders/${id}`, { method: 'DELETE' }),
 
   // Preferences
   setPreferences: (prefs) => apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify(prefs) }),

@@ -1,40 +1,12 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { api, tokenStore } from '../../api/client';
 
-// Passkey registration
-export const startRegistration = createAsyncThunk(
-  'auth/startRegistration',
-  async ({ username, displayName }, { rejectWithValue }) => {
-    try { return await api.registerStart(username, displayName); }
-    catch (err) { return rejectWithValue(err.message); }
-  }
-);
-
-export const finishRegistration = createAsyncThunk(
-  'auth/finishRegistration',
-  async ({ username, displayName, credential, challenge }, { rejectWithValue }) => {
+// Direct code auth: a single secret code logs you in as "Omkar".
+export const loginWithCode = createAsyncThunk(
+  'auth/loginWithCode',
+  async (code, { rejectWithValue }) => {
     try {
-      const data = await api.registerFinish(username, displayName, credential, challenge);
-      tokenStore.set(data.accessToken, data.refreshToken);
-      return data;
-    } catch (err) { return rejectWithValue(err.message); }
-  }
-);
-
-// Passkey login
-export const startLogin = createAsyncThunk(
-  'auth/startLogin',
-  async ({ username }, { rejectWithValue }) => {
-    try { return await api.loginStart(username); }
-    catch (err) { return rejectWithValue(err.message); }
-  }
-);
-
-export const finishLogin = createAsyncThunk(
-  'auth/finishLogin',
-  async ({ credential, challenge }, { rejectWithValue }) => {
-    try {
-      const data = await api.loginFinish(credential, challenge);
+      const data = await api.loginWithCode(code);
       tokenStore.set(data.accessToken, data.refreshToken);
       return data;
     } catch (err) { return rejectWithValue(err.message); }
@@ -55,14 +27,6 @@ export const logout = createAsyncThunk('auth/logout', async () => {
   tokenStore.clear();
 });
 
-export const deleteCredential = createAsyncThunk(
-  'auth/deleteCredential',
-  async (id, { rejectWithValue }) => {
-    try { return await api.deleteCredential(id); }
-    catch (err) { return rejectWithValue(err.message); }
-  }
-);
-
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
@@ -75,27 +39,15 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(startRegistration.pending, (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(startRegistration.rejected, (state, action) => { state.status = 'idle'; state.error = action.payload; })
-      .addCase(startRegistration.fulfilled, (state) => { state.status = 'idle'; })
-
-      .addCase(finishRegistration.pending, (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(finishRegistration.fulfilled, (state, action) => {
+      .addCase(loginWithCode.pending, (state) => { state.status = 'loading'; state.error = null; })
+      .addCase(loginWithCode.fulfilled, (state, action) => {
         state.status = 'authenticated';
         state.user = action.payload.user;
       })
-      .addCase(finishRegistration.rejected, (state, action) => { state.status = 'idle'; state.error = action.payload; })
-
-      .addCase(startLogin.pending, (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(startLogin.rejected, (state, action) => { state.status = 'idle'; state.error = action.payload; })
-      .addCase(startLogin.fulfilled, (state) => { state.status = 'idle'; })
-
-      .addCase(finishLogin.pending, (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(finishLogin.fulfilled, (state, action) => {
-        state.status = 'authenticated';
-        state.user = action.payload.user;
+      .addCase(loginWithCode.rejected, (state, action) => {
+        state.status = 'idle';
+        state.error = action.payload;
       })
-      .addCase(finishLogin.rejected, (state, action) => { state.status = 'idle'; state.error = action.payload; })
 
       .addCase(fetchMe.fulfilled, (state, action) => {
         state.status = 'authenticated';
@@ -109,12 +61,6 @@ const authSlice = createSlice({
       .addCase(logout.fulfilled, (state) => {
         state.status = 'unauthenticated';
         state.user = null;
-      })
-
-      .addCase(deleteCredential.fulfilled, (state, action) => {
-        if (state.user) {
-          state.user.credentials = action.payload.credentials;
-        }
       });
   },
 });

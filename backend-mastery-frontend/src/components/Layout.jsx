@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, BookOpen, Trophy, Bell, BarChart3, Menu, X, LogOut, User } from 'lucide-react';
+import { Home, BookOpen, Trophy, BarChart3, Menu, X, LogOut, User, Search } from 'lucide-react';
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../store/slices/authSlice';
@@ -7,18 +7,16 @@ import { logout } from '../store/slices/authSlice';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: Home },
   { to: '/learn', label: 'Learn', icon: BookOpen },
-  { to: '/reminders', label: 'Reminders', icon: Bell },
+  { to: '/search', label: 'Search', icon: Search },
   { to: '/badges', label: 'Badges', icon: Trophy },
   { to: '/stats', label: 'Stats', icon: BarChart3 },
 ];
 
 export default function Layout({ children }) {
   const { user, streak } = useSelector(s => ({ user: s.auth.user, streak: s.user.streak }));
-  const reminders = useSelector(s => s.reminders.items);
   const dispatch = useDispatch();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
-  const activeReminders = reminders.filter(r => !r.done).length;
 
   const handleLogout = async () => {
     await dispatch(logout()).unwrap();
@@ -51,11 +49,6 @@ export default function Layout({ children }) {
                 >
                   <Icon size={16} />
                   {label}
-                  {label === 'Reminders' && activeReminders > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                      {activeReminders}
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -68,7 +61,7 @@ export default function Layout({ children }) {
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-400">
               <User size={12} />
-              <span className="font-mono">{user?.username || ''}</span>
+              <span className="font-mono">{user?.name || user?.email || ''}</span>
             </div>
             <button onClick={handleLogout} className="p-2 rounded-lg hover:bg-slate-800/60 text-slate-400 hover:text-white" title="Sign out">
               <LogOut size={18} />

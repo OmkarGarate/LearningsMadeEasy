@@ -1,45 +1,48 @@
-# 🔧 Backend Mastery API — Passkey Edition
+# 🔧 Backend Mastery API
 
-Express + MongoDB + WebAuthn (passkeys) backend. No passwords, no codes, no emails — just your device's built-in auth (Face ID, fingerprint, Windows Hello).
+Express + MongoDB + JWT + AI tutor backend. Simple code-based auth + OpenAI-powered chatbot.
 
 ## 🚀 Quick start
 
 ```bash
 npm install
 cp .env.example .env
-# Fill in MONGODB_URI (free at mongodb.com/cloud/atlas)
+# Fill in MONGODB_URI (required). Others optional.
 npm run dev
 ```
 
-## 🔑 How passkeys work
+## 🔐 Auth flow (code-based, super simple)
 
-1. **First time** (on a device): Pick a username → browser prompts for Face ID/fingerprint → passkey created + saved to your device's secure enclave + synced to iCloud/Google account → you're in
-2. **Next time**: Click sign in → same username → browser prompts for Face ID/fingerprint → you're in (2 seconds)
-3. **New device**: Same flow. Your passkey auto-syncs from your iCloud/Google account, so it just works.
+1. User enters email → `POST /api/auth/otp/request`
+2. Server generates a 6-digit code, stores it in DB (10 min expiry)
+3. **In dev mode**: code is LOGGED to the terminal AND returned in the response
+4. **In production**: code is sent via email (Resend) — set `RESEND_API_KEY` in `.env`
+5. User enters the code → `POST /api/auth/otp/verify`
+6. Server returns access + refresh tokens
 
-## 🛡️ Why passkeys are the best
+That's it. No passkeys, no biometrics, no OAuth complexity.
 
-- **More secure than passwords** — keys never leave your device, can't be phished, can't be leaked
-- **Faster** — 2 seconds vs 20 seconds for email codes
-- **No "forgot password"** — your face/finger IS the password
-- **Multi-device** — passkeys sync via iCloud Keychain (Apple) or Google Password Manager
-- **No third-party services** — no email provider, no SMS, nothing to set up
+## 🤖 AI tutor (OpenAI-compatible)
+
+- **With `AI_API_KEY`**: real GPT answers using the entire curriculum as context
+- **Without `AI_API_KEY`**: smart pattern-based fallback using the concept's own data
+- Set `AI_BASE_URL` to use other providers (Together, Groq, Anyscale, Ollama)
+- Set `AI_MODEL` to your preferred model (default: `gpt-4o-mini`)
 
 ## 📡 Endpoints
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET  | `/api/health` | No | Health check |
-| POST | `/api/auth/register/start` | No | Start passkey registration |
-| POST | `/api/auth/register/finish` | No | Finish registration, get tokens |
-| POST | `/api/auth/login/start` | No | Start passkey login |
-| POST | `/api/auth/login/finish` | No | Finish login, get tokens |
+| POST | `/api/auth/otp/request` | No | Request code (logs to terminal in dev) |
+| POST | `/api/auth/otp/verify` | No | Verify code, get tokens |
 | POST | `/api/auth/refresh` | No | Refresh access token |
 | POST | `/api/auth/logout` | No | Logout |
 | GET  | `/api/auth/me` | Yes | Get current user |
-| GET  | `/api/auth/credentials` | Yes | List your devices |
-| DELETE | `/api/auth/credentials/:id` | Yes | Remove a device |
-| POST | `/api/user/progress/:conceptId/toggle` | Yes | Mark concept done/undone |
+| POST | `/api/ai/chat` | Yes | AI tutor chat |
+| POST | `/api/user/progress/:conceptId/toggle` | Yes | Mark concept done |
+| POST | `/api/user/mcq/answer` | Yes | Record MCQ answer (+5 XP if correct) |
+| POST | `/api/user/problem/solved` | Yes | Mark problem solved (+20 XP) |
 | PUT  | `/api/user/notes/:conceptId` | Yes | Save note |
 | POST | `/api/user/reminders` | Yes | Add reminder |
 | PATCH| `/api/user/reminders/:id/toggle` | Yes | Toggle done |
@@ -47,49 +50,30 @@ npm run dev
 | PUT  | `/api/user/preferences` | Yes | Save preferences |
 | POST | `/api/user/badges/sync` | Yes | Sync earned badges |
 
-## 🌐 Browser support
+## 🔒 Security
 
-| Browser | Passkeys |
-|---|---|
-| Chrome 109+ | ✅ |
-| Edge 109+ | ✅ |
-| Safari 16+ | ✅ |
-| Firefox 122+ | ✅ |
-| Mobile Safari (iOS 16+) | ✅ (with iCloud sync) |
-| Chrome Android | ✅ (with Google sync) |
+- Codes are bcrypt-hashed in DB
+- 10 minute expiry
+- 5 wrong attempts → code invalidated
+- Max 10 codes per email per hour
+- JWT access (15 min) + refresh (7 day) with rotation
+- Helmet + CORS + rate limiting
+- All sensitive operations require auth
 
-## 🧪 Local testing
+## 💰 Free services
 
-```bash
-# 1. Start the backend
-npm run dev
+| Service | Cost | Setup |
+|---|---|---|
+| MongoDB Atlas | Free 512MB forever | https://www.mongodb.com/cloud/atlas |
+| Resend (email) | Free 100/day | https://resend.com (optional) |
+| OpenAI | Pay-as-you-go | https://platform.openai.com (optional) |
+| Render | Free 750h/month | https://render.com |
 
-# 2. Start the frontend (in another terminal)
-cd ../backend-mastery-frontend
-npm run dev
-
-# 3. Open http://localhost:5173
-# 4. Pick a username, click "Sign up"
-# 5. Browser will prompt: "Use your passkey?" → click "Use"
-# 6. Sign in next time with the same username
-```
-
-## 🔒 Production setup
-
-When you deploy:
-
-1. Set `RP_ID` to your domain (e.g., `backend-mastery.vercel.app`)
-2. Set `ORIGIN` to your full frontend URL (e.g., `https://backend-mastery.vercel.app`)
-3. **Important:** Passkeys need HTTPS in production. Vercel gives you this for free.
-4. For local dev, `RP_ID=localhost` and `ORIGIN=http://localhost:5173` work without HTTPS (browsers allow it for localhost).
-
-## 🌐 Deploy to Render
+## 🚀 Deploy to Render
 
 1. Push to GitHub
-2. Render → "New Web Service" → connect your repo
-3. Set env vars:
-   - `MONGODB_URI`
-   - `FRONTEND_URL`
-   - `RP_ID` (your Vercel domain without protocol)
-   - `ORIGIN` (your Vercel URL with https://)
+2. Render → "New Web Service" → connect repo
+3. Set env vars (especially `MONGODB_URI`, `JWT_*_SECRET`)
 4. Deploy
+
+The `render.yaml` auto-configures most of it.

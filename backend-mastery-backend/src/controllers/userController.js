@@ -1,17 +1,37 @@
 import User from '../models/User.js';
 
+// Convert a Mongoose Map (or plain object/null) to a plain object
+function mapToObj(m) {
+  if (!m) return {};
+  if (m instanceof Map || typeof m.entries === 'function') {
+    try { return Object.fromEntries(m.entries()); } catch { return {}; }
+  }
+  if (typeof m === 'object') {
+    try { return Object.fromEntries(Object.entries(m)); } catch { return {}; }
+  }
+  return {};
+}
+
 function publicUser(user) {
+  const mcqOuter = mapToObj(user.mcqAnswers);
+  const mcqAnswers = {};
+  for (const [conceptId, innerMap] of Object.entries(mcqOuter)) {
+    mcqAnswers[conceptId] = mapToObj(innerMap);
+  }
   return {
     id: user._id,
-    username: user.username,
-    displayName: user.displayName,
-    progress: Object.fromEntries(user.progress || {}),
-    notes: Object.fromEntries(user.notes || {}),
+    email: user.email,
+    name: user.name,
+    progress: mapToObj(user.progress),
+    notes: mapToObj(user.notes),
     reminders: user.reminders || [],
     streak: user.streak,
     lastStudyDate: user.lastStudyDate,
     xp: user.xp,
     earnedBadges: user.earnedBadges || [],
+    mcqAnswers,
+    solvedProblems: user.solvedProblems || [],
+    chatMessages: user.chatMessages || 0,
     preferences: user.preferences || { dailyReminderTime: '19:00' },
   };
 }
@@ -38,7 +58,6 @@ export async function toggleConcept(req, res) {
     } else {
       user.progress.set(conceptId, Date.now());
       user.xp += 10;
-
       const t = today();
       if (user.lastStudyDate !== t) {
         if (user.lastStudyDate && diffDays(user.lastStudyDate, t) === 1) {
@@ -49,12 +68,52 @@ export async function toggleConcept(req, res) {
         user.lastStudyDate = t;
       }
     }
-
     await user.save();
     res.json({ user: publicUser(user) });
   } catch (err) {
     console.error('toggleConcept error:', err);
     res.status(500).json({ error: 'Failed to update progress' });
+  }
+}
+
+// ── MCQ answers ──────────────────────────────────────────────────
+export async function recordMcqAnswer(req, res) {
+  try {
+    const { conceptId, mcqId, selected, correct } = req.body;
+    if (!conceptId || !mcqId) {
+      return res.status(400).json({ error: 'conceptId and mcqId required' });
+    }
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Init nested map if needed
+    if (!user.mcqAnswers) user.mcqAnswers = new Map();
+    if (!user.mcqAnswers.get(conceptId)) user.mcqAnswers.set(conceptId, new Map());
+
+    const conceptMap = user.mcqAnswers.get(conceptId);
+    if (selected === null || correct === null) {
+      conceptMap.delete(mcqId);
+    } else {
+      conceptMap.set(mcqId, { selected, correct });
+    }
+
+    // Recalculate total correct + award XP for newly correct
+    let totalCorrect = 0;
+    let newCorrectCount = 0;
+    for (const [, answers] of user.mcqAnswers) {
+      for (const [, ans] of answers) {
+        if (ans?.correct) {
+          totalCorrect++;
+          if (ans.mcqId === mcqId && correct) newCorrectCount++;
+        }
+      }
+    }
+    if (correct) user.xp = (user.xp || 0) + 5;
+    await user.save();
+    res.json({ mcqAnswers: publicUser(user).mcqAnswers, quizCorrect: totalCorrect, xp: user.xp });
+  } catch (err) {
+    console.error('recordMcqAnswer error:', err);
+    res.status(500).json({ error: 'Failed to record answer' });
   }
 }
 
@@ -72,59 +131,12 @@ export async function setNote(req, res) {
       user.notes.delete(conceptId);
     }
     await user.save();
-    res.json({ notes: Object.fromEntries(user.notes) });
+    res.json({ notes: mapToObj(user.notes) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save note' });
   }
 }
 
-// ── Reminders ───────────────────────────────────────────────────
-export async function addReminder(req, res) {
-  try {
-    const { text, datetime } = req.body;
-    if (!text || !datetime) {
-      return res.status(400).json({ error: 'text and datetime are required' });
-    }
-    const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    user.reminders.push({ text, datetime: new Date(datetime), done: false });
-    await user.save();
-    res.json({ reminders: user.reminders });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to add reminder' });
-  }
-}
-
-export async function toggleReminder(req, res) {
-  try {
-    const { id } = req.params;
-    const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const r = user.reminders.id(id);
-    if (!r) return res.status(404).json({ error: 'Reminder not found' });
-    r.done = !r.done;
-    await user.save();
-    res.json({ reminders: user.reminders });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to update reminder' });
-  }
-}
-
-export async function deleteReminder(req, res) {
-  try {
-    const { id } = req.params;
-    const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    user.reminders = user.reminders.filter(r => r._id.toString() !== id);
-    await user.save();
-    res.json({ reminders: user.reminders });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to delete reminder' });
-  }
-}
 
 export async function setPreferences(req, res) {
   try {
@@ -148,5 +160,25 @@ export async function syncBadges(req, res) {
     res.json({ earnedBadges: user.earnedBadges });
   } catch (err) {
     res.status(500).json({ error: 'Failed to sync badges' });
+  }
+}
+
+export async function recordProblemSolved(req, res) {
+  try {
+    const { conceptId, problemTitle } = req.body;
+    if (!conceptId || !problemTitle) {
+      return res.status(400).json({ error: 'conceptId and problemTitle required' });
+    }
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const key = `${conceptId}::${problemTitle}`;
+    if (!user.solvedProblems.includes(key)) {
+      user.solvedProblems.push(key);
+      user.xp = (user.xp || 0) + 20;
+    }
+    await user.save();
+    res.json({ solvedProblems: user.solvedProblems, xp: user.xp });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to record problem' });
   }
 }
